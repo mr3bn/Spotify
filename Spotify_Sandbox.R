@@ -20,39 +20,98 @@ auth.response <- POST(
 token <- content(auth.response)$access_token
 token.header <- paste0("Bearer ", token)
 
-#get a user's playlists
-user.id <- "mtenny12"
+# table for users id's and their names:
+user.name.list <- c("Mark", "Sonia") 
+user.id.list <- c("mark.rossi.06", "122715968")
 
-https://open.spotify.com/user/
+users <- data.frame(name=user.name.list, id=user.id.list, stringsAsFactors = FALSE)
 
-playlist.url <- paste0("https://api.spotify.com/v1/users/", user.id, "/playlists")
-
-playlist.response <- GET(playlist.url, add_headers(Authorization = token.header))
-
-playlist.text <- fromJSON(content(playlist.response, as="text"))
-#most of these calls come wrapped in a paging object
-#the meat of what we want will be in the 'items' list of that object
-all.playlists <- playlist.text$items
-
-#create a data frame to hold all this info
-all.songs <- data.frame()
-
-
-#iterate over the playlists to scrape their individual songs
-for(i in 1:nrow(all.playlists)) {
-  p <- all.playlists[i, ]
+for(u in 1:nrow(users)) {
   
-  #spotify was nice enough to include the API url for each track contained inside the playlist$tracks list
-  tracks.url <- p$tracks$href
+  user.id <- users[u, "id"]
   
-  tracks.response <- GET(tracks.url, add_headers(Authorization = token.header))
+  playlist.url <- paste0("https://api.spotify.com/v1/users/", user.id, "/playlists")
   
-  tracks.text <- fromJSON(content(tracks.response, as="text"))
-  tracks <- tracks.text$items
+  playlist.response <- GET(playlist.url, add_headers(Authorization = token.header))
   
-  print(p$name)
+  playlist.text <- fromJSON(content(playlist.response, as="text"))
+  #most of these calls come wrapped in a paging object
+  #the meat of what we want will be in the 'items' list of that object
+  all.playlists <- playlist.text$items
   
-  for(j in 1:nrow(tracks)) {
-    #print(paste0("Track ", j, " on ", p$name, ": ", tracks[j,"track"]$name))
-  }
-}
+  #create a data frame to hold all this info
+  playlist.songs <- data.frame(
+    p.name=character(0), 
+    p.id=character(0), 
+    p.owner=character(0),
+    track.name=character(0),
+    track.id=character(0),
+    added.at=character(0),
+    track.duration=numeric(0),
+    track.popularity=numeric(0),
+    track.dance=numeric(0),
+    track.energy=numeric(0), 
+    track.key=integer(0),
+    track.loudness=numeric(0), 
+    track.speechiness=numeric(0), 
+    track.acousticness=numeric(0), 
+    track.instrumentalness=integer(0), 
+    track.liveness=numeric(0),
+    track.valence=numeric(0), 
+    track.tempo=numeric(0),
+    stringsAsFactors = FALSE
+  )
+  
+  #iterate over the playlists to scrape their individual songs
+  for(i in 1:nrow(all.playlists)) {
+    p <- all.playlists[i, ]
+    
+    #spotify was nice enough to include the API url for each track contained inside the playlist$tracks list
+    tracks.url <- p$tracks$href
+    
+    tracks.response <- GET(tracks.url, add_headers(Authorization = token.header))
+    
+    tracks.text <- fromJSON(content(tracks.response, as="text"))
+    tracks <- tracks.text$items
+    
+    for(j in 1:nrow(tracks)) {
+      
+      playlist.track <- tracks[j, ]
+      t <- playlist.track$track
+      
+      #and finally, we arrive at the audio features object:
+      features.url <- paste0("https://api.spotify.com/v1/audio-features/", t$id)
+      features.response <- GET(features.url, add_headers(Authorization = token.header))
+      features <- fromJSON(content(features.response, as="text"))
+      
+      
+      
+      v = data.frame(p.name=p$name,
+                     p.id=p$id, 
+                     p.owner=p$owner$id, 
+                     track.name=t$name, 
+                     track.id=t$id, 
+                     added.at=playlist.track$added_at, 
+                     track.duration=t$duration, 
+                     track.popularity=t$popularity, 
+                     track.dance=features$danceability,       
+                     track.energy=features$energy, 
+                     track.key=features$key, 
+                     track.loudness=features$loudness, 
+                     track.speechiness=features$speechiness, 
+                     track.acousticness=features$acousticness, 
+                     track.instrumentalness=features$instrumentalness, 
+                     track.liveness=features$liveness,       
+                     track.valence=features$valence, 
+                     track.tempo=features$tempo,
+                     stringsAsFactors = FALSE
+      )
+      
+      playlist.songs <- bind_rows(playlist.songs,v)
+    } # end tracks loop 
+  } # end playlists loop
+  
+  assign(users[u, "name"], playlist.songs)
+  
+  write.csv(playlist.songs, file=paste0(users[u, "name"], ".csv")) 
+} # end users loop
